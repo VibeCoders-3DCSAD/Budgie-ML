@@ -135,11 +135,19 @@ def _seasonal_forecast(
     """A full year's forecast: a typical month scaled by HFCE, plus last year's seasonal spending.
 
     HFCE drives the typical month, so a flat spender still sees the national quarterly shape. Spike
-    months stay out of that typical month and come back only in the month they recur, grown by HFCE.
-    Returns the typical month, its HFCE multiplier, the seasonal amount, and the spike month it came from.
+    months and payments the user marked yearly stay out of that typical month and come back only in
+    the month they recur, grown by HFCE.
+    Returns the typical month, its HFCE multiplier, the seasonal amount, and the month it came from.
     """
     in_category = expenses.loc[expenses["category"].eq(category)]
-    monthly = in_category.groupby(in_category["date"].dt.to_period("M"))["amount"].sum()
+    months = in_category["date"].dt.to_period("M")
+    is_yearly = (
+        in_category["recurrence"].eq("yearly")
+        if "recurrence" in in_category
+        else pd.Series(False, index=in_category.index)
+    )
+    monthly = in_category.loc[~is_yearly].groupby(months[~is_yearly])["amount"].sum()
+    yearly = in_category.loc[is_yearly].groupby(months[is_yearly])["amount"].sum()
     values = np.array([float(monthly.get(month, 0.0)) for month in window], dtype="float64")
     spikes = _spike_months(values)
     typical_quarters = [
@@ -151,10 +159,14 @@ def _seasonal_forecast(
     target_hfce = float(national[target_period.asfreq("Q")])
     multiplier = target_hfce / float(national[typical_quarters].mean())
     prior_month = target_period - MONTHS_PER_YEAR
-    if prior_month not in window or not spikes[window.index(prior_month)]:
+    if prior_month not in window:
         return base, multiplier, 0.0, None
-    excess = values[window.index(prior_month)] - base
-    seasonal = excess * target_hfce / float(national[prior_month.asfreq("Q")])
+    prior_index = window.index(prior_month)
+    excess = values[prior_index] - base if spikes[prior_index] else 0.0
+    last_year = excess + float(yearly.get(prior_month, 0.0))
+    if last_year == 0.0:
+        return base, multiplier, 0.0, None
+    seasonal = last_year * target_hfce / float(national[prior_month.asfreq("Q")])
     return base, multiplier, seasonal, prior_month
 
 

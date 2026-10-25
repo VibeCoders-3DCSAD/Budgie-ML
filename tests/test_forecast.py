@@ -291,6 +291,39 @@ def test_forecast_with_a_full_year_keeps_tuition_in_the_month_it_was_paid():
     assert november.amount == 0.0
 
 
+def test_forecast_with_a_full_year_brings_back_yearly_payments_in_their_month():
+    model = _food_model()  # endog = Q4'25 100, Q1'26 110, Q2'26 90, Q3'26 100; forecasts 120
+    model.model["education"] = dict(model.model["food"])
+    # Tuition every month from January to June is too regular to be a spike, so only the yearly mark keeps it seasonal.
+    tuition = [
+        {
+            **_food_expense(f"2026-0{month}-10", 14_000.0),
+            "category": "education",
+            "recurrence": "yearly",
+        }
+        for month in range(1, 7)
+    ]
+    supplies = [{**row, "category": "education", "amount": 500.0} for row in _flat_food_history()]
+
+    january, november = (
+        forecast_service.forecast(
+            model,
+            [*_flat_food_history(), *supplies, *tuition],
+            ["education"],
+            as_of=date(2026, 10, 21),
+            target_month=month,
+        )[0]
+        for month in ["2027-01", "2026-11"]
+    )
+
+    # Supplies PHP 500 * 120 / 100, plus January 2026's tuition grown by Q1'27 120 / Q1'26 110.
+    assert january.user_baseline_amount == 500.0
+    assert january.seasonal_amount == 15_272.73
+    assert january.amount == 15_873.0
+    assert "2026-01 seasonal spending" in january.explanation
+    assert (november.amount, november.seasonal_amount) == (600.0, 0.0)
+
+
 def test_forecast_with_a_full_year_still_forecasts_a_month_skipped_last_year():
     history = [row for row in _flat_food_history() if not row["date"].startswith("2026-01")]
 
