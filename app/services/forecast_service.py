@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -262,7 +263,7 @@ def forecast_months(
     model: ModuleModel,
     transactions: list[dict],
     categories: list[str],
-    target_months: list[str | None],
+    target_months: Sequence[str | None],
     as_of: date | None = None,
     user_id: str | None = None,
 ) -> list[ForecastPoint]:
