@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
@@ -29,6 +29,13 @@ ROBUST_BASELINE_MONTHS = 6
 SAME_PERIOD_LAST_YEAR = "same_period_last_year"
 MEDIAN_MONTHLY = "median_monthly"
 PROVISIONAL = "recency_weighted_provisional"
+# Months follow the Philippine calendar; the Philippines keeps GMT+8 all year, with no daylight saving.
+MANILA = timezone(timedelta(hours=8))
+
+
+def manila_today() -> date:
+    """Today in the Philippines, whatever time zone the server runs in."""
+    return datetime.now(MANILA).date()
 
 
 def _round_to_whole_peso(amount: float) -> float:
@@ -219,7 +226,7 @@ def forecast(
     target_month: str | None = None,
 ) -> list[ForecastPoint]:
     """Project each HFCE category for one month: the next calendar month unless one is given."""
-    as_of = as_of or date.today()
+    as_of = as_of or manila_today()
     current_month = pd.Period(as_of, freq="M")
     target_period = pd.Period(target_month, freq="M") if target_month else current_month + 1
     if target_period < current_month:
@@ -322,7 +329,7 @@ def forecast_months(
     user_id: str | None = None,
 ) -> list[ForecastPoint]:
     """Forecast each target month in order; None stands for the next calendar month."""
-    as_of = as_of or date.today()
+    as_of = as_of or manila_today()
     return [
         point
         for target_month in target_months

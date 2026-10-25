@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -49,6 +49,17 @@ def test_forecast_rounds_final_amounts_half_up_to_whole_pesos():
     assert [
         forecast_service._round_to_whole_peso(amount) for amount in [1.2, 1.4, 1.5, 1.7, 4_460.57]
     ] == [1.0, 1.0, 2.0, 2.0, 4_461.0]
+
+
+def test_today_follows_the_philippine_calendar(monkeypatch):
+    class _OneAmNovemberFirstInManila(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 31, 17, 0, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(forecast_service, "datetime", _OneAmNovemberFirstInManila)
+
+    assert forecast_service.manila_today() == date(2026, 11, 1)
 
 
 def test_seasonal_naive_hfce_artifact_forecasts_recursively():
