@@ -424,6 +424,26 @@ def test_predict_forecasts_several_target_months_in_one_call(client):
     assert body["snapshot"]["total_amount"] == body["forecasts"][0]["amount"]
 
 
+def test_predict_accepts_the_current_month_plus_a_year_ahead(client):
+    months = [_tenth_of_month_before(-offset)[:7] for offset in range(13)]
+    payload = {
+        "user_id": "test-user-hfce",
+        "categories": ["food"],
+        "historical_transactions": [_food_expense(_tenth_of_month_before(1), 1_300.0)],
+        "target_months": months,
+    }
+
+    response = trusted_post(client, "/api/v1/forecast/predict", payload, "test-user-hfce")
+
+    assert response.status_code == 200
+    assert [point["month"] for point in response.json()["forecasts"]] == months
+    too_many = {**payload, "target_months": [*months, _tenth_of_month_before(-13)[:7]]}
+    assert (
+        trusted_post(client, "/api/v1/forecast/predict", too_many, "test-user-hfce").status_code
+        == 422
+    )
+
+
 def test_predict_rejects_both_target_month_kinds(client):
     month = _tenth_of_month_before(-1)[:7]
     payload = {
