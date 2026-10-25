@@ -470,6 +470,41 @@ def test_predict_rejects_both_target_month_kinds(client):
     assert response.status_code == 422
 
 
+def test_predict_forecasts_a_past_month_as_of_its_first_day(client):
+    last_month = _tenth_of_month_before(1)[:7]
+    payload = {
+        "user_id": "test-user-hfce",
+        "categories": ["food"],
+        "historical_transactions": [
+            _food_expense(_tenth_of_month_before(2), 1_300.0),
+            _food_expense(_tenth_of_month_before(1), 9_000.0),
+        ],
+        "target_months": [last_month],
+        "as_of": f"{last_month}-01",
+    }
+
+    response = trusted_post(client, "/api/v1/forecast/predict", payload, "test-user-hfce")
+
+    assert response.status_code == 200
+    point = response.json()["forecasts"][0]
+    assert point["month"] == last_month
+    # Last month's own spending came after the forecast date, so the month before it is the baseline.
+    assert point["user_baseline_amount"] == 1_300.0
+
+
+def test_predict_rejects_an_as_of_date_in_the_future(client):
+    payload = {
+        "user_id": "test-user-hfce",
+        "categories": ["food"],
+        "historical_transactions": [_food_expense(_tenth_of_month_before(1), 1_300.0)],
+        "as_of": (forecast_service.manila_today() + timedelta(days=1)).isoformat(),
+    }
+
+    response = trusted_post(client, "/api/v1/forecast/predict", payload, "test-user-hfce")
+
+    assert response.status_code == 422
+
+
 def test_forecast_with_six_to_eleven_months_uses_the_median_month_and_flags_seasonality():
     model = _food_model()
     model.model["education"] = dict(model.model["food"])
