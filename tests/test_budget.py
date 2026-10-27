@@ -107,7 +107,7 @@ def test_budget_keeps_forecast_surplus_out_of_expense_categories(client):
     assert recommendation["unallocated_surplus"] == 10_000.0
 
 
-def test_budget_allocates_scarce_funds_across_essential_targets_by_weight(client):
+def test_budget_allocates_scarce_funds_across_essential_targets_by_share(client):
     payload = _budget_payload()
     payload["available_funds"] = 10_000.0
     payload["categories"] = [
@@ -156,7 +156,9 @@ def test_budget_allocates_scarce_funds_across_essential_targets_by_weight(client
         allocation["category_id"]: allocation["amount"]
         for allocation in response.json()["recommendation"]["allocations"]
     }
-    assert allocations == {"food": 8_000.0, "housing": 2_000.0, "recreation": 0.0}
+    assert allocations == pytest.approx(
+        {"food": 5714.285714285715, "housing": 4285.714285714285, "recreation": 0.0}
+    )
 
 
 @pytest.mark.parametrize("priority_group", ["ESSENTIAL", "NON_ESSENTIAL"])
@@ -200,7 +202,7 @@ def test_budget_does_not_starve_lower_weight_category(client, priority_group):
         allocation["category_id"]: allocation["amount"]
         for allocation in response.json()["recommendation"]["allocations"]
     }
-    assert allocations == pytest.approx({"food": 4210.526315789473, "housing": 789.4736842105264})
+    assert allocations == pytest.approx({"food": 2857.142857142857, "housing": 2142.857142857143})
 
 
 @pytest.mark.parametrize(
@@ -210,9 +212,12 @@ def test_budget_does_not_starve_lower_weight_category(client, priority_group):
         (2_000.0, {"food": 2_000.0, "leisure": 0.0, "savings": 0.0}),
         (
             7_000.0,
-            {"food": 2_000.0, "leisure": 4210.526315789473, "savings": 789.4736842105264},
+            {"food": 2_000.0, "leisure": 2857.142857142857, "savings": 2142.857142857143},
         ),
-        (12_000.0, {"food": 2_000.0, "leisure": 8_000.0, "savings": 2_000.0}),
+        (
+            12_000.0,
+            {"food": 2_000.0, "leisure": 5714.285714285715, "savings": 4285.714285714285},
+        ),
         (17_000.0, {"food": 2_000.0, "leisure": 8_000.0, "savings": 6_000.0}),
     ],
 )
@@ -262,7 +267,7 @@ def test_budget_protects_non_essential_coverage_after_essentials(client, funds, 
     [
         (2_500.0, [1_000.0, 1_000.0, 500.0, 0.0, 0.0]),
         (3_500.0, [2_000.0, 1_000.0, 500.0, 0.0, 0.0]),
-        (6_000.0, [2_000.0, 1_000.0, 1_750.0, 1_250.0, 0.0]),
+        (6_000.0, [2_000.0, 1_000.0, 1_000.0, 2_000.0, 0.0]),
         (12_000.0, [2_000.0, 1_000.0, 2_000.0, 6_000.0, 0.0]),
     ],
 )

@@ -19,8 +19,8 @@ EPS = 1e-9
 def optimize(request: BudgetRequest) -> tuple[BudgetRecommendation, list[BudgetExplanation]]:
     """Solve one monthly Financial Plan allocation without relaxing user rules.
 
-    Forecast targets cap allocations. A first linear program maximizes
-    weighted Essential coverage so a lower-weight Essential is not starved.
+    Forecast targets cap allocations. A first linear program gives every
+    Essential the same share of its target so no Essential is starved.
     The same coverage program protects Non-essentials using funds remaining
     after Essential targets. A final program preserves both coverage floors,
     prioritizes Essentials, and uses category weights to approach forecast caps.
@@ -175,7 +175,7 @@ def _priority_coverage_bounds(
     allocation_bounds: list[tuple[float, float]],
     funds: float,
 ) -> list[tuple[float, float]]:
-    """Protect each group's weighted coverage, reserving Essential targets first."""
+    """Protect each group's target coverage, reserving Essential targets first."""
     for group in (BudgetPriorityGroup.ESSENTIAL, BudgetPriorityGroup.NON_ESSENTIAL):
         coverage_bounds = allocation_bounds
         if group == BudgetPriorityGroup.NON_ESSENTIAL:
@@ -188,7 +188,7 @@ def _priority_coverage_bounds(
             if sum(floor for floor, _ceiling in coverage_bounds) >= funds:
                 break
 
-        coverage_floors = _weighted_coverage_floors(categories, coverage_bounds, funds, group)
+        coverage_floors = _coverage_floors(categories, coverage_bounds, funds, group)
         allocation_bounds = [
             (max(floor, coverage_floors[index]), ceiling)
             if category.priority_group == group
@@ -200,34 +200,34 @@ def _priority_coverage_bounds(
     return allocation_bounds
 
 
-def _weighted_coverage_floors(
+def _coverage_floors(
     categories: list[BudgetCategory],
     allocation_bounds: list[tuple[float, float]],
     funds: float,
     priority_group: BudgetPriorityGroup,
 ) -> list[float]:
-    """Maximize a group's common weighted coverage level with an LP."""
+    """Maximize the share of target every group member receives with an LP."""
     floors = [floor for floor, _ceiling in allocation_bounds]
     ceilings = [ceiling for _floor, ceiling in allocation_bounds]
-    weighted_gaps = {
-        index: (ceilings[index] - floors[index]) * max(categories[index].priority_weight, EPS)
+    gaps = {
+        index: ceilings[index] - floors[index]
         for index, category in enumerate(categories)
         if category.priority_group == priority_group and ceilings[index] > floors[index] + EPS
     }
-    if not weighted_gaps:
+    if not gaps:
         return floors
 
     # Variables are allocations x_i and coverage level z. Each group member must
-    # receive floor_i + z * weighted_gap_i before the final target optimization.
+    # receive floor_i + z * gap_i before the final target optimization.
     n = len(categories)
     objective = [0.0] * n + [-1.0]
     budget_constraint = [1.0] * n + [0.0]
     coverage_constraints = []
     coverage_limits = []
-    for index, weighted_gap in weighted_gaps.items():
+    for index, gap in gaps.items():
         constraint = [0.0] * (n + 1)
         constraint[index] = -1.0
-        constraint[-1] = weighted_gap
+        constraint[-1] = gap
         coverage_constraints.append(constraint)
         coverage_limits.append(-floors[index])
 
