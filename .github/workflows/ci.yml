@@ -1,0 +1,62 @@
+name: CI
+
+# Runs before merge the same gate the sync runs after merge: mirror the manifest files into
+# budgie-ml-service and run its ruff, mypy, and pytest. budgie-ml-service is public and its
+# dependencies exclude the CUDA build of torch, so this needs no key and stays fast.
+# No paths filter: a required check must always report.
+on:
+  pull_request:
+  push:
+    branches: [main, staging, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deployable:
+    name: Verify sync into budgie-ml-service
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: odin-ml
+
+      # Check against the budgie-ml-service branch this change will reach: the PR's base, or the pushed branch.
+      - name: Pick budgie-ml-service branch
+        id: target
+        env:
+          BASE: ${{ github.base_ref || github.ref_name }}
+        run: |
+          case "$BASE" in
+            main|staging|dev) branch="$BASE" ;;
+            *) branch=main ;;
+          esac
+          echo "branch=$branch" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: VibeCoders-3DCSAD/budgie-ml-service
+          ref: ${{ steps.target.outputs.branch }}
+          path: budgie-ml-service
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Without --push the script only commits locally on the runner.
+      - name: Sync and verify
+        env:
+          SYNC_BRANCH: ${{ steps.target.outputs.branch }}
+          OPENBLAS_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: |
+          git -C budgie-ml-service config user.name "odin-ml-ci[bot]"
+          git -C budgie-ml-service config user.email "odin-ml-ci@users.noreply.github.com"
+          (cd budgie-ml-service && uv sync --locked)
+          odin-ml/scripts/sync-budgie-ml-service.sh "$GITHUB_WORKSPACE/budgie-ml-service"

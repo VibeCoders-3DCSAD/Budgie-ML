@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Mirror the files in budgie-sync-manifest.txt into a budgie-ml-service checkout,
-# verify them there, and commit. Pushing to budgie's main triggers its CI and deploy.
+# verify them there, and commit. Pushing to budgie's main or staging triggers its CI and deploy.
 # Usage: scripts/sync-budgie-ml-service.sh <budgie-ml-service-path> [--push]
+# SYNC_BRANCH picks the budgie-ml-service branch (default main).
 set -euo pipefail
 
 source_repo="$(cd "$(dirname "$0")/.." && pwd)"
 target_repo="${1:?usage: $0 <budgie-ml-service-path> [--push]}"
 push="${2:-}"
+branch="${SYNC_BRANCH:-main}"
 manifest="$source_repo/scripts/budgie-sync-manifest.txt"
 
 mapfile -t files < <(grep -Ev '^\s*(#|$)' "$manifest")
@@ -21,8 +23,8 @@ if [[ -n "$(git -C "$target_repo" status --porcelain)" ]]; then
   echo "budgie-ml-service has uncommitted changes; refusing to sync." >&2
   exit 1
 fi
-if [[ "$(git -C "$target_repo" branch --show-current)" != "main" ]]; then
-  echo "budgie-ml-service must be on main." >&2
+if [[ "$(git -C "$target_repo" branch --show-current)" != "$branch" ]]; then
+  echo "budgie-ml-service must be on $branch." >&2
   exit 1
 fi
 
@@ -56,5 +58,5 @@ EOF
 git log -1 --stat --format='%h %s'
 
 if [[ "$push" == "--push" ]]; then
-  git push origin main
+  git push origin "$branch"
 fi
